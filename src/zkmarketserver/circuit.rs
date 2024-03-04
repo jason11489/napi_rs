@@ -20,6 +20,8 @@ use ark_r1cs_std::{fields::fp::FpVar, prelude::AllocVar};
 use ark_relations::r1cs::{ConstraintSynthesizer, SynthesisError};
 use ark_std::marker::PhantomData;
 
+use ark_r1cs_std::bits::boolean::Boolean;
+
 use super::MockingCircuit;
 
 pub type ConstraintF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeField;

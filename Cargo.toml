@@ -1,7 +1,7 @@
 [package]
-name = "tiger"
-version = "0.1.0"
 edition = "2021"
+name    = "tiger"
+version = "0.1.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -9,75 +9,58 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-napi = "2"
-napi-derive = "2"
-ark-ff = { version = "^0.4.1", default-features = false }
-ark-ec = { version = "^0.4.1", default-features = false }
-ark-serialize = { version = "0.4.2" }
-ark-poly = { version = "^0.4.1", default-features = false }
-ark-std = { version = "0.4.0" }
-ark-relations = { version = "0.4.0" }
-ark-r1cs-std = { version = "^0.4.0", default-features = false, optional = true }
-tracing = { version = "0.1", default-features = false, features = [
-    "attributes",
-], optional = true }
-derivative = { version = "2.0", features = ["use_core"], optional = true }
-rayon = { version = "1", optional = true }
-wasmer = { version = "2.3.0", optional = true, default-features = false }
-fnv = { version = "1.0.3", default-features = false, optional = true }
-num-bigint = { version = "0.4.3" }
-log = "0.4"
-ark-groth16 = { version = "^0.4.0", default-features = false, optional = true }
-ark-snark = { version = "^0.4.0", default-features = false, optional = true }
-dock_crypto_utils = { version = "0.9.0", default-features = false }
-ark-bn254 = { version = "^0.4.0", default-features = false, features = [
-    "curve",
-] }
-ark-bls12-381 = "0.4.0"
-ark-bls12-377 = { version = "^0.4.0", default-features = false, features = [
-    "curve",
-] }
-legogroth16 = "0.7.0"
-serde_json = "1.0.96"
-hex = "0.4.3"
-bls12_381 = "0.8.0"
-json = "0.12.4"
-json-writer = "0.2.1"
-serde = "1.0.163"
-pairing = "0.20"
-crypto-hash = "0.3.4"
-
-ark-ed-on-bn254 = { version = "^0.4.0", features = ["r1cs"] }
+ark-bn254 = "0.4.0"
 ark-crypto-primitives = { version = "0.4.0", default-features = true, features = [
     "r1cs",
     "encryption",
     "crh",
     "merkle_tree",
 ] }
+ark-ec = "0.4.2"
+ark-ed-on-bn254 = { version = "^0.4.0", features = ["r1cs"] }
+ark-ff = "0.4.2"
+ark-groth16 = "0.4.0"
+ark-poly = "0.4.2"
+ark-r1cs-std = "0.4.0"
+ark-relations = "0.4.0"
+ark-serialize = "0.4.2"
+ark-std = { version = "0.4.0", features = ["getrandom"] }
 libc = "0.2"
-rand = "0.8.5"
+num-bigint = "0.4"
+serde = { version = "1.0.163", features = ["derive"] }
+serde_json = "1.0.96"
+
+derivative = "2.2.0"
+rand       = "0.8.5"
+
+hex                = "0.4.3"
+tracing            = { version = "0.1" }
 tracing-subscriber = "0.2.0"
 
+napi        = "2"
+napi-derive = "2"
+
 [dev-dependencies]
-ark-bls12-381 = "0.4.0"
-num-bigint = "0.4.3"
-ark-ed-on-bls12-381 = { version = "^0.4.0", features = ["r1cs"] }
 ark-bls12-377 = "0.4.0"
+ark-bls12-381 = "0.4.0"
 ark-cp6-782 = "0.4.0"
+ark-ed-on-bls12-381 = { version = "^0.4.0", features = ["r1cs"] }
 ark-mnt4-298 = { version = "0.4.0", default-features = false, features = [
+    "r1cs",
+    "curve",
+] }
+ark-mnt4-753 = { version = "0.4.0", default-features = false, features = [
     "r1cs",
     "curve",
 ] }
 ark-mnt6-298 = { version = "0.4.0", default-features = false, features = [
     "r1cs",
 ] }
-ark-mnt4-753 = { version = "0.4.0", default-features = false, features = [
-    "r1cs",
-    "curve",
-] }
 ark-mnt6-753 = { version = "0.4.0", default-features = false, features = [
     "r1cs",
 ] }
+napi-build = "1"
+num-bigint = "0.4.3"
 
 
 [build-dependencies]

@@ -1,7 +1,4 @@
-use crate::zkmarketserver::circuit::ZkMarketserverCircuit;
-
 mod test {
-  use std::result;
 
   use crate::api::groth16::vk::VerifyingKeyWrapper;
   use ark_bn254::Bn254;
@@ -10,7 +7,6 @@ mod test {
   use ark_crypto_primitives::snark::CircuitSpecificSetupSNARK;
   use ark_crypto_primitives::snark::SNARK;
   use ark_ec::AffineRepr;
-  use ark_groth16::prepare_verifying_key;
   use ark_groth16::Groth16;
   use ark_std::rand::RngCore;
   use ark_std::rand::SeedableRng;
