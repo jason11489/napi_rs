@@ -8,6 +8,7 @@ use ark_groth16::ProvingKey;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Read, Write};
 use ark_std::io::Cursor;
 use ark_std::rand::SeedableRng;
+use serde_json::Number;
 use std::fs::File;
 
 use rand::rngs::OsRng;
@@ -27,13 +28,22 @@ use crate::api::zkmarket::structure::{
 };
 use crate::gadget::hashes::mimc7;
 use ark_std::test_rng;
+use napi::bindgen_prelude::*;
 use napi_derive::napi;
 
-#[napi(object)]
-struct input {}
+use napi::bindgen_prelude::Buffer;
 
-#[test]
-pub fn prove() {
+#[napi]
+pub fn plus_100(input: u32) -> u32 {
+  input + 100
+}
+#[napi]
+pub fn test2() -> u32 {
+  10
+}
+
+#[napi]
+pub fn prove(raw_input: Buffer) {
   use crate::gadget::public_encryptions::elgamal;
   use ark_bn254::Bn254;
   use ark_ec::CurveGroup;
@@ -72,35 +82,41 @@ pub fn prove() {
   };
 
   // Circuit
+  use ark_ed_on_bn254::EdwardsProjective;
+  type C = EdwardsProjective;
 
-  let input: ZkMarketCircuitInputs<_> = ZkMarketCircuitInputs {
-    statement: ZkMarketCircuitStatement {
-      cm: 0,
-      cmWallet: 0,
-      G_r: 0,
-      c1: 0,
-      CT_k: 0,
-    },
-    witnesses: ZkMarketCircuitWitnesses {
-      h_k: 0,
-      k_data: 0,
-      pk_cons: 0,
-      ENA_writer: 0,
-      r: 0,
-      fee: 0,
-      CT_k_key: 0,
-      CT_k_x: 0,
-      CT_k_r: 0,
-      tk_addr: 0,
-      tk_id: 0,
-    },
-  };
+  // let inputs: ZkMarketCircuitInputs<C> = serde_json::from_str().unwrap();
 
-  let c: ZkMarketCircuit<C, GG> = input
-    .create_circuit(Constants, |v| twisted_edwards::Affine::new(v[0], v[1]))
-    .unwrap();
+  // let input: ZkMarketCircuitInputs<_> = ZkMarketCircuitInputs {
+  //   statement: ZkMarketCircuitStatement {
+  //     cm: C::BaseField::from_string(
+  //       "e6bfb11768869c4506214c07f0ee69a304f6173a43687a819d29f87d22e326f",
+  //     ),
+  //     cmWallet: 0,
+  //     G_r: 0,
+  //     c1: 0,
+  //     CT_k: 0,
+  //   },
+  //   witnesses: ZkMarketCircuitWitnesses {
+  //     h_k: 0,
+  //     k_data: 0,
+  //     pk_cons: 0,
+  //     ENA_writer: 0,
+  //     r: 0,
+  //     fee: 0,
+  //     CT_k_key: 0,
+  //     CT_k_x: 0,
+  //     CT_k_r: 0,
+  //     tk_addr: 0,
+  //     tk_id: 0,
+  //   },
+  // };
 
-  let proof = Groth16::<ark_bn254::Bn254>::prove(&pk, c.clone(), &mut rng).unwrap();
+  // let c: ZkMarketCircuit<C, GG> = input
+  //   .create_circuit(Constants, |v| twisted_edwards::Affine::new(v[0], v[1]))
+  //   .unwrap();
+
+  // let proof = Groth16::<ark_bn254::Bn254>::prove(&pk, c.clone(), &mut rng).unwrap();
 
   // prove
 }
@@ -162,23 +178,17 @@ where
 
   let dir_path = std::path::Path::new(file_path).parent().unwrap(); // Get the parent directory path
   if !dir_path.exists() {
-    if let Err(err) = std::fs::create_dir_all(dir_path) {
-      return Err(format!("Failed to create folder: {}", err));
-    }
+    std::fs::create_dir_all(dir_path);
   }
 
-  if let Err(e) = value.serialize_uncompressed(&mut cursor) {
-    return Err(format!("Failed to serialize: {}", e));
-  }
+  value.serialize_uncompressed(&mut cursor);
 
   let mut file = match File::create(file_path) {
     Ok(f) => f,
-    Err(e) => return Err(format!("Failed to create file: {}", e)),
+    Err(e) => return Err(napi::Error::new(0.to_string(), 1)),
   };
 
-  if let Err(e) = file.write_all(cursor.get_ref()) {
-    return Err(format!("Failed to write to file: {}", e));
-  }
+  file.write_all(cursor.get_ref());
 
   Ok(())
 }

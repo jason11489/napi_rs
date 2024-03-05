@@ -9,8 +9,8 @@ use crate::gadget::public_encryptions::elgamal;
 #[derive(Clone)]
 pub struct ZkMarketCircuitConstants<C: CurveGroup>
 where
-    <C as CurveGroup>::BaseField: PrimeField + Absorb,
+  <C as CurveGroup>::BaseField: PrimeField + Absorb,
 {
-    pub rc: mimc7::Parameters<C::BaseField>, // round_constants
-    pub G: elgamal::Parameters<C>,
+  pub rc: mimc7::Parameters<C::BaseField>, // round_constants
+  pub G: elgamal::Parameters<C>,
 }

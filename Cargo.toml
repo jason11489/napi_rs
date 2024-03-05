@@ -73,3 +73,7 @@ lto = true
 [features]
 
 zkmarketserver = []
+
+# .cargo/config.toml
+[build]
+target = "aarch64-apple-darwin"
