@@ -1,9 +1,9 @@
 use std::{borrow::Borrow, marker::PhantomData};
 
+use crate::Error;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::Field;
-use ark_serialize::{CanonicalSerialize, CanonicalDeserialize};
-use crate::Error;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 use super::{CRHScheme, TwoToOneCRHScheme};
 
@@ -12,172 +12,162 @@ pub mod parameters;
 
 #[derive(Clone, Default, CanonicalSerialize, CanonicalDeserialize)]
 pub struct Parameters<F: Field> {
-    pub round_constants: Vec<F>,
+  pub round_constants: Vec<F>,
 }
 
-pub struct MiMC<F: Field + Absorb>
-{
-    _field: PhantomData<F>,
+pub struct MiMC<F: Field + Absorb> {
+  _field: PhantomData<F>,
 }
 
 impl<F: Field + Absorb> MiMC<F> {
-
-    fn round(xl: F, xr: F, rc: F) -> F {
-        let mut xored = xl.add(xr).add(rc);
-        let mut tmp = xored.clone();
-        for _ in 0..2 {
-            tmp = tmp.mul(tmp);
-            xored = xored.mul(tmp);
-        }
-
-        xored
+  fn round(xl: F, xr: F, rc: F) -> F {
+    let mut xored = xl.add(xr).add(rc);
+    let mut tmp = xored.clone();
+    for _ in 0..2 {
+      tmp = tmp.mul(tmp);
+      xored = xored.mul(tmp);
     }
 
-    fn encrypt(params: Parameters<F>, xl: F, xr: F) -> F {
-        let mut result = Self::round(xl, xr, F::zero());
+    xored
+  }
 
-        for i in 1..params.round_constants.len() {
-            result = Self::round(
-                result.clone(),
-                xr.clone(),
-                params.round_constants[i]
-            );
-        }
+  fn encrypt(params: Parameters<F>, xl: F, xr: F) -> F {
+    let mut result = Self::round(xl, xr, F::zero());
 
-        result.add(xr.clone())
+    for i in 1..params.round_constants.len() {
+      result = Self::round(result.clone(), xr.clone(), params.round_constants[i]);
     }
 
-
+    result.add(xr.clone())
+  }
 }
 
 impl<F> CRHScheme for MiMC<F>
 where
-    F: Field + Absorb,
+  F: Field + Absorb,
 {
-    type Parameters = Parameters<F>;
-    type Input = [F];
-    type Output = F;
+  type Parameters = Parameters<F>;
+  type Input = [F];
+  type Output = F;
 
-    fn evaluate<T: Borrow<Self::Input>>(
-        parameters: &Self::Parameters,
-        input: T,
-    ) -> Result<Self::Output, Error>
-    {
-        let input = input.borrow();
-        let mut output: Self::Output;
-        if input.len() == 1 {
-            let xl = input[0].clone();
-            let xr = input[0].clone();
-            output = Self::encrypt(parameters.clone(), xl, xr).add(input[0]).add(input[0]);
-        } else {
-            output = input[0].clone();
-            for i in 1..input.len() {
-                let xl = output.clone();
-                let xr = input[i].clone();
+  fn evaluate<T: Borrow<Self::Input>>(
+    parameters: &Self::Parameters,
+    input: T,
+  ) -> Result<Self::Output, Error> {
+    let input = input.borrow();
+    let mut output: Self::Output;
+    if input.len() == 1 {
+      let xl = input[0].clone();
+      let xr = input[0].clone();
+      output = Self::encrypt(parameters.clone(), xl, xr)
+        .add(input[0])
+        .add(input[0]);
+    } else {
+      output = input[0].clone();
+      for i in 1..input.len() {
+        let xl = output.clone();
+        let xr = input[i].clone();
 
-                output = Self::encrypt(parameters.clone(),xl, xr);
-                output = output.add(xl).add(input[i]);
-            }
-        }
-
-        Ok(output)
+        output = Self::encrypt(parameters.clone(), xl, xr);
+        output = output.add(xl).add(input[i]);
+      }
     }
+
+    Ok(output)
+  }
 }
 
 pub struct TwoToOneMiMC<F: Field> {
-    _field: PhantomData<F>,
+  _field: PhantomData<F>,
 }
 
 impl<F: Field + Absorb> TwoToOneMiMC<F> {
-
-    fn encrypt(params: Parameters<F>, xl: F, xr: F) -> F {
-        MiMC::<F>::encrypt(params, xl, xr)
-    }
-
-
+  fn encrypt(params: Parameters<F>, xl: F, xr: F) -> F {
+    MiMC::<F>::encrypt(params, xl, xr)
+  }
 }
-
 
 impl<F> TwoToOneCRHScheme for TwoToOneMiMC<F>
 where
-    F: Field + Absorb,
+  F: Field + Absorb,
 {
-    type Parameters = Parameters<F>;
-    type Input = F;
-    type Output = F;
+  type Parameters = Parameters<F>;
+  type Input = F;
+  type Output = F;
 
-    fn evaluate<T: Borrow<Self::Input>>(
-        parameters: &Self::Parameters,
-        left_input: T,
-        right_input: T,
-    ) -> Result<Self::Output, Error>
-    {
-        let left_input = left_input.borrow();
-        let right_input = right_input.borrow();
+  fn evaluate<T: Borrow<Self::Input>>(
+    parameters: &Self::Parameters,
+    left_input: T,
+    right_input: T,
+  ) -> Result<Self::Output, Error> {
+    let left_input = left_input.borrow();
+    let right_input = right_input.borrow();
 
-        let xl = left_input.clone();
-        let xr = right_input.clone();
+    let xl = left_input.clone();
+    let xr = right_input.clone();
 
-        let output = Self::encrypt(parameters.clone(), xl, xr).add(left_input).add(right_input);
+    let output = Self::encrypt(parameters.clone(), xl, xr)
+      .add(left_input)
+      .add(right_input);
 
+    Ok(output)
+  }
 
-        Ok(output)
-    }
-
-    fn compress<T: Borrow<Self::Output>>(
-        parameters: &Self::Parameters,
-        left_input: T,
-        right_input: T,
-    ) -> Result<Self::Output, ark_crypto_primitives::Error> {
-        // TODO sponge input
-        <Self as TwoToOneCRHScheme>::evaluate(parameters, left_input.borrow(), right_input.borrow())
-    }
-
+  fn compress<T: Borrow<Self::Output>>(
+    parameters: &Self::Parameters,
+    left_input: T,
+    right_input: T,
+  ) -> Result<Self::Output, ark_crypto_primitives::Error> {
+    // TODO sponge input
+    <Self as TwoToOneCRHScheme>::evaluate(parameters, left_input.borrow(), right_input.borrow())
+  }
 }
 
 #[cfg(test)]
 mod test {
-    use ark_ff::{PrimeField};
-    use ark_bn254::{Fr};
+  use ark_bn254::Fr;
+  use ark_ff::PrimeField;
 
-    use crate::gadget::hashes::{mimc7::{self, parameters}, TwoToOneCRHScheme, CRHScheme};
+  use crate::gadget::hashes::{
+    mimc7::{self, parameters},
+    CRHScheme, TwoToOneCRHScheme,
+  };
 
-    use super::Parameters;
+  use super::Parameters;
 
-    fn print_hex(f: Fr) {
-        let decimal_number = f.into_bigint().to_string();
+  fn print_hex(f: Fr) {
+    let decimal_number = f.into_bigint().to_string();
 
-        // Parse the decimal number as a BigUint
-        let big_int = num_bigint::BigUint::parse_bytes(decimal_number.as_bytes(), 10).unwrap();
+    // Parse the decimal number as a BigUint
+    let big_int = num_bigint::BigUint::parse_bytes(decimal_number.as_bytes(), 10).unwrap();
 
-        // Convert the BigUint to a hexadecimal string
-        let hex_string = format!("{:x}", big_int);
+    // Convert the BigUint to a hexadecimal string
+    let hex_string = format!("{:x}", big_int);
 
-        println!("0x{}", hex_string);
-    }
+    println!("0x{}", hex_string);
+  }
 
-    #[test]
-    fn test_mimc() {
-        let rounc_constants = parameters::get_bn256_round_constants().clone();
+  #[test]
+  fn test_mimc() {
+    let rounc_constants = parameters::get_bn256_round_constants().clone();
 
-        let param = Parameters {
-            round_constants: rounc_constants,
-        };
+    let param = Parameters {
+      round_constants: rounc_constants,
+    };
 
-        let xl = Fr::from(111111);
-        let xr = Fr::from(111111);
+    let xl = Fr::from(111111);
+    let xr = Fr::from(111111);
 
-        let res = mimc7::MiMC::<Fr>::evaluate(&param, [xl, xr].to_vec()).unwrap();
-        print!("res:: ",);
-        print_hex(res);
-        let res = mimc7::TwoToOneMiMC::<Fr>::evaluate(&param, xl, xr).unwrap();
-        print!("res:: ");
-        print_hex(res);
-        let res_compress = mimc7::TwoToOneMiMC::<Fr>::compress(&param, xl, xr).unwrap();
-        assert_eq!(res_compress, res);
-    }
+    let res = mimc7::MiMC::<Fr>::evaluate(&param, [xl, xr].to_vec()).unwrap();
+    print!("res:: ",);
+    print_hex(res);
+    let res = mimc7::TwoToOneMiMC::<Fr>::evaluate(&param, xl, xr).unwrap();
+    print!("res:: ");
+    print_hex(res);
+    let res_compress = mimc7::TwoToOneMiMC::<Fr>::compress(&param, xl, xr).unwrap();
+    assert_eq!(res_compress, res);
+  }
 }
-
 
 // round constants
 // rc[ 0]: 0xaed26d6a3f5e0ea662411ddfcde3527479de9cee7a56c656ff5f61df13a39401

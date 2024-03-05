@@ -12,8 +12,8 @@ mod test {
   use ark_std::rand::SeedableRng;
   use ark_std::test_rng;
 
-  use crate::zkmarketserver;
-  use crate::zkmarketserver::circuit::ZkMarketserverCircuit;
+  use crate::zkmarket;
+  use crate::zkmarket::circuit::ZkMarketCircuit;
 
   use crate::gadget::hashes::mimc7;
 
@@ -48,10 +48,8 @@ mod test {
     };
 
     let test_input =
-      <ZkMarketserverCircuit<C, GG> as zkmarketserver::MockingCircuit<C, GG>>::generate_circuit(
-        rc, &mut rng,
-      )
-      .unwrap();
+      <ZkMarketCircuit<C, GG> as zkmarket::MockingCircuit<C, GG>>::generate_circuit(rc, &mut rng)
+        .unwrap();
 
     println!("Generate CRS!");
     let (pk, vk) = {

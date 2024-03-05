@@ -28,7 +28,7 @@ pub type ConstraintF<C> = <<C as CurveGroup>::BaseField as Field>::BasePrimeFiel
 #[allow(non_snake_case)]
 #[derive(Clone)]
 
-pub struct ZkMarketserverCircuit<C: CurveGroup, GG: CurveVar<C, ConstraintF<C>>>
+pub struct ZkMarketCircuit<C: CurveGroup, GG: CurveVar<C, ConstraintF<C>>>
 where
   <C as CurveGroup>::BaseField: PrimeField + Absorb,
 {
@@ -63,7 +63,7 @@ where
 }
 
 #[allow(non_snake_case)]
-impl<C, GG> ConstraintSynthesizer<C::BaseField> for ZkMarketserverCircuit<C, GG>
+impl<C, GG> ConstraintSynthesizer<C::BaseField> for ZkMarketCircuit<C, GG>
 where
   C: CurveGroup,
   GG: CurveVar<C, C::BaseField>,
@@ -236,7 +236,7 @@ where
 }
 
 #[allow(non_snake_case)]
-impl<C, GG> MockingCircuit<C, GG> for ZkMarketserverCircuit<C, GG>
+impl<C, GG> MockingCircuit<C, GG> for ZkMarketCircuit<C, GG>
 where
   C: CurveGroup,
   GG: CurveVar<C, C::BaseField>,
@@ -246,7 +246,7 @@ where
   type F = C::BaseField;
   type HashParam = mimc7::Parameters<Self::F>;
   type H = mimc7::MiMC<Self::F>;
-  type Output = ZkMarketserverCircuit<C, GG>;
+  type Output = ZkMarketCircuit<C, GG>;
 
   fn generate_circuit<R: ark_std::rand::Rng>(
     round_constants: Self::HashParam,
@@ -354,7 +354,7 @@ where
       CT_k.push(c.c);
     });
 
-    Ok(ZkMarketserverCircuit {
+    Ok(ZkMarketCircuit {
       //constant
       rc: rc.clone(),
       G: elgamal_param,
