@@ -41,7 +41,7 @@ where
 
       // inputs
       cm: Some(self.statement.cm.clone()),
-      cmWallet: Some(self.statement.cm.clone()),
+      cmWallet: Some(self.statement.cmWallet.clone()),
       G_r: Some(to_affine(self.statement.G_r.clone())),
       c1: Some(to_affine(self.statement.c1.clone())),
       CT_k: Some(self.statement.CT_k.clone()),
