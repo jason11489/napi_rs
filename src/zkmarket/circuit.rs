@@ -189,11 +189,11 @@ where
     // check cm_Wallet
 
     let cmWallet_hash_input = [
+      result_o_wallet.clone(),
       tk_addr.clone(),
       tk_id.clone(),
-      ENA_writer.clone(),
       fee.clone(),
-      result_o_wallet.clone(),
+      ENA_writer.clone(),
     ];
     let result_cmWallet = MiMCGadget::<C::BaseField>::evaluate(&rc, &cmWallet_hash_input).unwrap();
 
@@ -315,11 +315,11 @@ where
     let cmWallet = Self::H::evaluate(
       &rc.clone(),
       [
+        oWallet.clone(),
         tk_addr,
         tk_id,
-        ENA_writer.clone(),
         fee.clone(),
-        oWallet.clone(),
+        ENA_writer.clone(),
       ]
       .to_vec(),
     )

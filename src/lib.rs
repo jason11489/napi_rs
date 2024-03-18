@@ -106,7 +106,7 @@ pub fn test_snark_input(input: snark_input) {
 
 #[napi]
 pub fn test2() -> u32 {
-  10
+  876543
 }
 
 #[napi]
@@ -197,44 +197,13 @@ pub fn prove(input: snark_input) -> String {
 
   let proof = Groth16::<ark_bn254::Bn254>::prove(&pk, c.clone(), &mut rng).unwrap();
 
-  let proof = ProofWrapper::new(&proof);
-  let serialized_proof = serde_json::to_string(&proof).unwrap();
+  let _proof = ProofWrapper::new(&proof);
+  let serialized_proof = serde_json::to_string(&_proof).unwrap();
 
   let mut buf = serialized_proof.into_boxed_str();
   let data = buf.as_mut_ptr();
 
   buf.to_string()
-
-  // Check verify proof
-  // use ark_groth16::VerifyingKey;
-  // let mut vk_file = File::open("../CRS/crs.vk").expect("file not found");
-  // let mut vk_buffer = Vec::new();
-  // vk_file
-  //   .read_to_end(&mut vk_buffer)
-  //   .expect("fail to read pk");
-
-  // let mut image: Vec<F> = vec![c.cm.clone().unwrap(), c.cmWallet.clone().unwrap()];
-  // image.append(&mut c.CT_k.clone().unwrap());
-  // image.append(&mut vec![
-  //   *c.G_r.clone().unwrap().x().unwrap(),
-  //   *c.G_r.clone().unwrap().y().unwrap(),
-  // ]);
-  // image.append(&mut vec![
-  //   *c.c1.clone().unwrap().x().unwrap(),
-  //   *c.c1.clone().unwrap().y().unwrap(),
-  // ]);
-
-  // println!("\nPrint image\n");
-  // image.iter().enumerate().for_each(|(i, x)| {
-  //   print!("{}: ", i + 1);
-  //   print_hex(*x);
-  // });
-
-  // let vk = VerifyingKey::<Bn254>::deserialize_uncompressed(&mut vk_buffer.as_slice()).unwrap();
-
-  // let result = Groth16::<ark_bn254::Bn254>::verify(&vk, &image, &proof).unwrap();
-
-  // println!("Verify result = {:?}", result);
   // input
 }
 
