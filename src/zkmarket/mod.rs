@@ -24,6 +24,7 @@ where
 
   fn generate_circuit<R: ark_std::rand::Rng>(
     round_constants: Self::HashParam,
+    tree_height: u64,
     rng: &mut R,
   ) -> Result<Self::Output, Error>;
 }

@@ -1,8 +1,9 @@
 mod test {
 
-  use crate::api::groth16::vk::VerifyingKeyWrapper;
   use ark_bn254::Bn254;
   use ark_ff::PrimeField;
+  use std::time::Duration;
+  use std::time::Instant;
 
   use ark_crypto_primitives::snark::CircuitSpecificSetupSNARK;
   use ark_crypto_primitives::snark::SNARK;
@@ -11,14 +12,13 @@ mod test {
   use ark_std::rand::RngCore;
   use ark_std::rand::SeedableRng;
   use ark_std::test_rng;
+  use std::mem;
 
   use crate::zkmarket;
   use crate::zkmarket::circuit::ZkMarketCircuit;
 
   use crate::gadget::hashes::mimc7;
 
-  // type C = ark_bn254::G1Projective; type GG =
-  // ark_ec::bn::g1::G1Projective<ark_bn254::g1::Config>;
   type C = ark_ed_on_bn254::EdwardsProjective;
   type GG = ark_ed_on_bn254::constraints::EdwardsVar;
 
@@ -39,79 +39,72 @@ mod test {
 
   #[test]
   fn test_zkmarket() {
-    use ark_relations::r1cs::ConstraintSynthesizer;
-
     let mut rng = ark_std::rand::rngs::StdRng::seed_from_u64(test_rng().next_u64());
 
     let rc: mimc7::Parameters<F> = mimc7::Parameters {
       round_constants: mimc7::parameters::get_bn256_round_constants(),
     };
 
-    let test_input =
-      <ZkMarketCircuit<C, GG> as zkmarket::MockingCircuit<C, GG>>::generate_circuit(rc, &mut rng)
-        .unwrap();
+    let test_input = <ZkMarketCircuit<C, GG> as zkmarket::MockingCircuit<C, GG>>::generate_circuit(
+      rc, 32, &mut rng,
+    )
+    .unwrap();
 
     println!("Generate CRS!");
+    let setup_timp = Instant::now();
     let (pk, vk) = {
       let c = test_input.clone();
 
       Groth16::<Bn254>::setup(c, &mut rng).unwrap()
     };
 
+    let CRS_size = mem::size_of_val(&pk) + mem::size_of_val(&vk);
+    println!("CRS size = {:?}", CRS_size);
+
     println!("Prepared verifying key!");
     let pvk = Groth16::<Bn254>::process_vk(&vk).unwrap();
+    println!("setup time = {:?}", setup_timp.elapsed());
+    const SAMPLES: u32 = 1;
+    let mut total_proving = Duration::new(0, 0);
+    let mut total_verifying = Duration::new(0, 0);
 
-    let mut image: Vec<_> = vec![
-      test_input.cm.clone().unwrap(),
-      test_input.cmWallet.clone().unwrap(),
-    ];
-    image.append(&mut test_input.CT_k.clone().unwrap());
-    image.append(&mut vec![
-      *test_input.G_r.clone().unwrap().x().unwrap(),
-      *test_input.G_r.clone().unwrap().y().unwrap(),
-      *test_input.c1.clone().unwrap().x().unwrap(),
-      *test_input.c1.clone().unwrap().y().unwrap(),
-    ]);
+    for _ in 0..SAMPLES {
+      let mut image: Vec<_> = vec![
+        test_input.rt.clone().unwrap(),
+        test_input.nf.clone().unwrap(),
+        test_input.cmAzeroth.clone().unwrap(),
+        test_input.hk.clone().unwrap(),
+        test_input.addrseller.clone().unwrap(),
+      ];
+      image.append(&mut vec![
+        *test_input.G_r.clone().unwrap().x().unwrap(),
+        *test_input.G_r.clone().unwrap().y().unwrap(),
+        *test_input.c1.clone().unwrap().x().unwrap(),
+        *test_input.c1.clone().unwrap().y().unwrap(),
+      ]);
+      image.append(&mut test_input.CT_k.clone().unwrap());
+      let start = Instant::now();
+      {
+        let c = test_input.clone();
 
-    let c = test_input.clone();
+        println!("Generate proof!");
+        let proof = Groth16::<Bn254>::prove(&pk, c.clone(), &mut rng).unwrap();
+        assert!(Groth16::<Bn254>::verify_with_processed_vk(&pvk, &image, &proof).unwrap());
+      }
+      total_proving += start.elapsed();
+      let start = Instant::now();
+      total_verifying += start.elapsed();
+    }
 
-    println!("Generate proof!");
-    let proof = Groth16::<Bn254>::prove(&pk, c.clone(), &mut rng).unwrap();
+    let proving_avg = total_proving / SAMPLES;
+    let proving_avg =
+      proving_avg.subsec_nanos() as f64 / 1_000_000_000f64 + (proving_avg.as_secs() as f64);
 
-    /////////////////////// prove 할 때 사용되는 입력과 verify 입력에 들어가는 입력 출력용 코드
-    let cs = ark_relations::r1cs::ConstraintSystem::new_ref();
-    cs.set_optimization_goal(ark_relations::r1cs::OptimizationGoal::Constraints);
+    let verifying_avg = total_verifying / SAMPLES;
+    let verifying_avg =
+      verifying_avg.subsec_nanos() as f64 / 1_000_000_000f64 + (verifying_avg.as_secs() as f64);
 
-    c.generate_constraints(cs.clone()).unwrap();
-    cs.finalize();
-    let prover = cs.borrow().unwrap();
-
-    println!("cs prover");
-    prover
-      .instance_assignment
-      .iter()
-      .enumerate()
-      .for_each(|(i, x)| {
-        print!("{}: ", i);
-        print_hex(*x);
-      });
-
-    println!("\ncs vf");
-    image.iter().enumerate().for_each(|(i, x)| {
-      print!("{}: ", i + 1);
-      print_hex(*x);
-    });
-    ///////////////////////
-    let vk_wrapper = VerifyingKeyWrapper::new(&vk);
-
-    println!(
-      "[TEST] Verify Key as Contract Format: {:?}",
-      vk_wrapper.vk_to_contract_args()
-    );
-
-    let result = Groth16::<Bn254>::verify_with_processed_vk(&pvk, &image, &proof).unwrap();
-    println!("result = {:?}", result);
-
-    assert!(Groth16::<Bn254>::verify_with_processed_vk(&pvk, &image, &proof).unwrap());
+    println!("Average proving time: {:?} seconds", proving_avg);
+    println!("Average verifying time: {:?} seconds", verifying_avg);
   }
 }

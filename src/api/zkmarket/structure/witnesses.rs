@@ -17,13 +17,15 @@ where
   <C as CurveGroup>::BaseField: PrimeField + Absorb,
 {
   // witnesses
-  pub h_k: C::BaseField,
+  pub cm: C::BaseField,
+  pub leaf_pos: u32,
+  pub tree_proof: Vec<C::BaseField>, // NOT containing leaf pos
+  pub skseller: C::BaseField,
   pub k_data: C::BaseField,
-  pub pk_cons: Vec<C::BaseField>,
-  pub ENA_writer: C::BaseField,
+  pub pkbuyer: Vec<C::BaseField>,
   pub r: C::BaseField,
   pub fee: C::BaseField,
-
+  pub oazeroth: C::BaseField,
   pub CT_k_key: Vec<C::BaseField>,
   pub CT_k_x: C::BaseField,
   pub CT_k_r: C::ScalarField,
@@ -42,16 +44,22 @@ where
   {
     let mut state = serializer.serialize_struct("ZkMarketCircuitWitnesses", 10)?;
     let multi_values_tuple = vec![
-      ("pk_cons", self.pk_cons.clone()),
+      (
+        // note that this contains following: [leaf_sibling_hash, auth_path, leaf_index]
+        "tree_proof",
+        self.tree_proof.clone(),
+      ),
+      ("pkbuyer", self.pkbuyer.clone()),
       ("CT_k_key", self.CT_k_key.clone()),
     ];
     // "r", "leaf_pos" is not C::BaseField values
     let single_values_tuple = vec![
-      ("h_k", self.h_k.clone().to_string()),
+      ("cm", self.cm.clone().to_string()),
+      ("skseller", self.skseller.clone().to_string()),
       ("k_data", self.k_data.clone().to_string()),
-      ("ENA_writer", self.ENA_writer.clone().to_string()),
       ("r", self.r.clone().to_string()),
       ("fee", self.fee.clone().to_string()),
+      ("oazeroth", self.oazeroth.clone().to_string()),
       ("CT_k_x", self.CT_k_x.clone().to_string()),
       ("CT_k_r", self.CT_k_r.clone().to_string()),
       ("tk_addr", self.tk_addr.clone().to_string()),
@@ -100,12 +108,15 @@ where
     #[allow(non_camel_case_types)]
     #[derive(Eq, PartialEq, Hash)]
     enum Field {
-      h_k,
+      cm,
+      leaf_pos,
+      tree_proof,
+      skseller,
       k_data,
-      pk_cons,
-      ENA_writer,
+      pkbuyer,
       r,
       fee,
+      oazeroth,
       CT_k_key,
       CT_k_x,
       CT_k_r,
@@ -125,7 +136,7 @@ where
 
           fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
             formatter.write_str(
-              "`h_k` , `k_data`, `pk_cons`, `ENA_writer`, `r`, `fee`, `CT_k_key`, `CT_k_x`, 
+              "`cm` , `leaf_pos`, `tree_proof`, `skseller`, `k_data`,`pkbuyer`,`r`, `fee`,`oazeroth`, `CT_k_key`, `CT_k_x`, 
                         `CT_k_r`, `tk_addr`,`tk_id` ",
             )
           }
@@ -135,12 +146,15 @@ where
             E: de::Error,
           {
             match value {
-              "h_k" => Ok(Field::h_k),
+              "cm" => Ok(Field::cm),
+              "leaf_pos" => Ok(Field::leaf_pos),
+              "tree_proof" => Ok(Field::tree_proof),
+              "skseller" => Ok(Field::skseller),
               "k_data" => Ok(Field::k_data),
-              "pk_cons" => Ok(Field::pk_cons),
-              "ENA_writer" => Ok(Field::ENA_writer),
+              "pkbuyer" => Ok(Field::pkbuyer),
               "r" => Ok(Field::r),
               "fee" => Ok(Field::fee),
+              "oazeroth" => Ok(Field::oazeroth),
               "CT_k_key" => Ok(Field::CT_k_key),
               "CT_k_x" => Ok(Field::CT_k_x),
               "CT_k_r" => Ok(Field::CT_k_r),
@@ -177,27 +191,30 @@ where
       {
         let mut multi_values_map: HashMap<Field, (&str, Option<Vec<C::BaseField>>)> =
           HashMap::from([
-            (Field::pk_cons, ("pk_cons", None)),
+            (Field::tree_proof, ("tree_proof", None)),
+            (Field::pkbuyer, ("pkbuyer", None)),
             ((Field::CT_k_key, ("CT_k_key", None))),
           ]);
 
         let mut single_values_map: HashMap<Field, (&str, Option<C::BaseField>)> = HashMap::from([
-          (Field::h_k, ("h_k", None)),
+          (Field::cm, ("cm", None)),
+          (Field::skseller, ("skseller", None)),
           (Field::k_data, ("k_data", None)),
-          (Field::ENA_writer, ("ENA_writer", None)),
           (Field::r, ("r", None)),
           (Field::fee, ("fee", None)),
+          (Field::oazeroth, ("oazeroth", None)),
           (Field::CT_k_x, ("CT_k_x", None)),
           (Field::tk_addr, ("tk_addr", None)),
           (Field::tk_id, ("tk_id", None)),
         ]);
 
         let mut CT_k_r = None;
+        let mut leaf_pos = None;
 
         while let Some(key) = map.next_key()? {
           match key {
             // handle multi values
-            Field::pk_cons | Field::CT_k_key => {
+            Field::tree_proof | Field::pkbuyer | Field::CT_k_key => {
               let (name, value) = multi_values_map.get(&key).unwrap();
               if value.is_some() {
                 return Err(de::Error::duplicate_field(name));
@@ -211,11 +228,12 @@ where
               multi_values_map.insert(key, (*name, updated));
             }
             // handle single values
-            Field::h_k
+            Field::cm
+            | Field::skseller
             | Field::k_data
-            | Field::ENA_writer
             | Field::r
             | Field::fee
+            | Field::oazeroth
             | Field::CT_k_x
             | Field::tk_addr
             | Field::tk_id => {
@@ -239,6 +257,13 @@ where
                 BigUint::parse_bytes(s.as_bytes(), 16).unwrap(),
               ));
             }
+            Field::leaf_pos => {
+              if leaf_pos.is_some() {
+                return Err(de::Error::duplicate_field("leaf_pos"));
+              }
+              let s: String = map.next_value()?;
+              leaf_pos = Some(u32::from_str_radix(&s, 16).unwrap());
+            }
           }
         }
 
@@ -248,6 +273,7 @@ where
         }
 
         let CT_k_r = CT_k_r.ok_or_else(|| de::Error::missing_field("CT_k_r"))?;
+        let leaf_pos = leaf_pos.ok_or_else(|| de::Error::missing_field("leaf_pos"))?;
 
         // helper function to decrease lines...
         fn unwrap_map<K, V, W>(m: &HashMap<K, (V, Option<W>)>, k: K) -> &W
@@ -259,12 +285,15 @@ where
         }
 
         Ok(ZkMarketCircuitWitnesses {
-          h_k: unwrap_map(&single_values_map, Field::h_k).clone(),
+          cm: unwrap_map(&single_values_map, Field::cm).clone(),
+          leaf_pos,
+          tree_proof: unwrap_map(&multi_values_map, Field::CT_k_key).clone(),
+          skseller: unwrap_map(&single_values_map, Field::leaf_pos).clone(),
           k_data: unwrap_map(&single_values_map, Field::k_data).clone(),
-          pk_cons: unwrap_map(&multi_values_map, Field::pk_cons).clone(),
-          ENA_writer: unwrap_map(&single_values_map, Field::ENA_writer).clone(),
+          pkbuyer: unwrap_map(&multi_values_map, Field::pkbuyer).clone(),
           r: unwrap_map(&single_values_map, Field::r).clone(),
           fee: unwrap_map(&single_values_map, Field::fee).clone(),
+          oazeroth: unwrap_map(&single_values_map, Field::oazeroth).clone(),
           CT_k_key: unwrap_map(&multi_values_map, Field::CT_k_key).clone(),
           CT_k_x: unwrap_map(&single_values_map, Field::CT_k_x).clone(),
           CT_k_r,

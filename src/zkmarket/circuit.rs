@@ -12,15 +12,18 @@ use crate::gadget::public_encryptions::elgamal;
 use crate::gadget::public_encryptions::elgamal::constraints::ElGamalEncGadget;
 use crate::gadget::public_encryptions::AsymmetricEncryptionGadget;
 
+use crate::gadget::merkle_tree;
+use crate::gadget::merkle_tree::mocking::MockingMerkleTree;
+use crate::gadget::merkle_tree::{constraints::ConfigGadget, Config, IdentityDigestConverter};
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::CurveGroup;
 use ark_ff::{Field, PrimeField};
+use ark_r1cs_std::bits::boolean::Boolean;
 use ark_r1cs_std::prelude::*;
 use ark_r1cs_std::{fields::fp::FpVar, prelude::AllocVar};
 use ark_relations::r1cs::{ConstraintSynthesizer, SynthesisError};
 use ark_std::marker::PhantomData;
-
-use ark_r1cs_std::bits::boolean::Boolean;
+use libc::ELAST;
 
 use super::MockingCircuit;
 
@@ -37,20 +40,25 @@ where
   pub G: elgamal::Parameters<C>,
 
   // statement
-  pub cm: Option<C::BaseField>,
-  pub cmWallet: Option<C::BaseField>,
+  pub rt: Option<C::BaseField>,
+  pub nf: Option<C::BaseField>,
+  pub cmAzeroth: Option<C::BaseField>,
+  pub hk: Option<C::BaseField>,
+  pub addrseller: Option<C::BaseField>,
   pub G_r: Option<C::Affine>,
   pub c1: Option<C::Affine>,
   pub CT_k: Option<Vec<C::BaseField>>,
 
   // witnesses
-  pub h_k: Option<C::BaseField>,
+  pub cm: Option<C::BaseField>,
+  pub leaf_pos: Option<u32>,
+  pub tree_proof: Option<merkle_tree::Path<FieldMTConfig<C::BaseField>>>,
+  pub skseller: Option<C::BaseField>,
   pub k_data: Option<symmetric::SymmetricKey<C::BaseField>>,
-  pub pk_cons: Option<elgamal::PublicKey<C>>,
-  pub ENA_writer: Option<C::BaseField>,
+  pub pkbuyer: Option<elgamal::PublicKey<C>>,
   pub r: Option<C::BaseField>,
   pub fee: Option<C::BaseField>,
-
+  pub oazeroth: Option<C::BaseField>,
   pub CT_k_key: Option<elgamal::Plaintext<C>>,
   pub CT_k_x: Option<symmetric::SymmetricKey<C::BaseField>>,
   pub CT_k_r: Option<elgamal::Randomness<C>>,
@@ -60,6 +68,33 @@ where
   // directionSelector
   // intermediateHashWires
   pub _curve_var: PhantomData<GG>,
+}
+
+pub struct FieldMTConfig<F: PrimeField> {
+  _field: PhantomData<F>,
+}
+impl<F: PrimeField + Absorb> Config for FieldMTConfig<F> {
+  type Leaf = [F];
+  type LeafDigest = F;
+  type LeafInnerDigestConverter = IdentityDigestConverter<F>;
+  type InnerDigest = F;
+  type LeafHash = mimc7::MiMC<F>;
+  type TwoToOneHash = mimc7::TwoToOneMiMC<F>;
+}
+
+struct FieldMTConfigVar<F: PrimeField> {
+  _field: PhantomData<F>,
+}
+impl<F> ConfigGadget<FieldMTConfig<F>, F> for FieldMTConfigVar<F>
+where
+  F: PrimeField + Absorb,
+{
+  type Leaf = [FpVar<F>];
+  type LeafDigest = FpVar<F>;
+  type LeafInnerConverter = IdentityDigestConverter<FpVar<F>>;
+  type InnerDigest = FpVar<F>;
+  type LeafHash = mimc7::constraints::MiMCGadget<F>;
+  type TwoToOneHash = mimc7::constraints::TwoToOneMiMCGadget<F>;
 }
 
 #[allow(non_snake_case)]
@@ -85,14 +120,30 @@ where
     )?;
 
     // statement
-
-    let cm = FpVar::new_input(cs.clone(), || {
-      self.cm.ok_or(SynthesisError::AssignmentMissing)
+    let rt = FpVar::new_input(cs.clone(), || {
+      self.rt.ok_or(SynthesisError::AssignmentMissing)
     })?;
 
-    let cmWallet = FpVar::new_input(cs.clone(), || {
-      self.cmWallet.ok_or(SynthesisError::AssignmentMissing)
+    let nf = FpVar::new_input(cs.clone(), || {
+      self.nf.ok_or(SynthesisError::AssignmentMissing)
     })?;
+
+    let cmAzeroth = FpVar::new_input(cs.clone(), || {
+      self.cmAzeroth.ok_or(SynthesisError::AssignmentMissing)
+    })?;
+
+    let hk = FpVar::new_input(cs.clone(), || {
+      self.hk.ok_or(SynthesisError::AssignmentMissing)
+    })?;
+
+    let addrseller = FpVar::new_input(cs.clone(), || {
+      self.addrseller.ok_or(SynthesisError::AssignmentMissing)
+    })?;
+
+    let c1 = elgamal::constraints::OutputVar::new_input(ark_relations::ns!(cs, "c1"), || {
+      Ok((self.G_r.unwrap(), self.c1.unwrap()))
+    })
+    .unwrap();
 
     let CT_k: Vec<FpVar<C::BaseField>> = Vec::new_input(ark_relations::ns!(cs, "CT_k"), || {
       self.CT_k.ok_or(SynthesisError::AssignmentMissing)
@@ -104,32 +155,44 @@ where
 
     // witness
 
-    let h_k = FpVar::new_witness(ark_relations::ns!(cs, "h_k"), || Ok(self.h_k.unwrap())).unwrap();
+    let cm = FpVar::new_witness(ark_relations::ns!(cs, "cm"), || Ok(self.cm.unwrap())).unwrap();
+
+    let leaf_pos = UInt32::new_witness(ark_relations::ns!(cs, "leaf_pos"), || {
+      self.leaf_pos.ok_or(SynthesisError::AssignmentMissing)
+    })?
+    .to_bits_le();
+
+    let mut cw = merkle_tree::constraints::PathVar::<
+      FieldMTConfig<C::BaseField>,
+      C::BaseField,
+      FieldMTConfigVar<C::BaseField>,
+    >::new_witness(ark_relations::ns!(cs, "cw"), || {
+      self.tree_proof.ok_or(SynthesisError::AssignmentMissing)
+    })?;
+
+    let skseller = FpVar::new_witness(ark_relations::ns!(cs, "skseller"), || {
+      Ok(self.skseller.unwrap())
+    })
+    .unwrap();
 
     let k_data = symmetric::constraints::SymmetricKeyVar::new_witness(
       ark_relations::ns!(cs, "k_data"),
       || self.k_data.ok_or(SynthesisError::AssignmentMissing),
     )?;
 
-    let pk_cons =
-      elgamal::constraints::PublicKeyVar::new_witness(ark_relations::ns!(cs, "pk_cons"), || {
-        self.pk_cons.ok_or(SynthesisError::AssignmentMissing)
+    let pkbuyer =
+      elgamal::constraints::PublicKeyVar::new_witness(ark_relations::ns!(cs, "pkbuyer"), || {
+        self.pkbuyer.ok_or(SynthesisError::AssignmentMissing)
       })?;
-
-    let ENA_writer = FpVar::new_witness(ark_relations::ns!(cs, "ENA_writer"), || {
-      self.ENA_writer.ok_or(SynthesisError::AssignmentMissing)
-    })?;
-
-    let tk_addr = FpVar::new_witness(ark_relations::ns!(cs, "tk_addr"), || {
-      Ok(self.tk_addr.unwrap())
-    })
-    .unwrap();
-    let tk_id =
-      FpVar::new_witness(ark_relations::ns!(cs, "tk_id"), || Ok(self.tk_id.unwrap())).unwrap();
 
     let r = FpVar::new_witness(ark_relations::ns!(cs, "r"), || Ok(self.r.unwrap())).unwrap();
 
     let fee = FpVar::new_witness(ark_relations::ns!(cs, "fee"), || Ok(self.fee.unwrap())).unwrap();
+
+    let oazeroth = FpVar::new_witness(ark_relations::ns!(cs, "oazeroth"), || {
+      Ok(self.oazeroth.unwrap())
+    })
+    .unwrap();
 
     let CT_k_key: elgamal::constraints::PlaintextVar<C, GG> =
       elgamal::constraints::PlaintextVar::new_witness(ark_relations::ns!(cs, "CT_k_key"), || {
@@ -146,64 +209,21 @@ where
         self.CT_k_r.ok_or(SynthesisError::AssignmentMissing)
       })?;
 
-    let c1 = elgamal::constraints::OutputVar::new_input(ark_relations::ns!(cs, "c1"), || {
-      Ok((self.G_r.unwrap(), self.c1.unwrap()))
+    let tk_addr = FpVar::new_witness(ark_relations::ns!(cs, "tk_addr"), || {
+      Ok(self.tk_addr.unwrap())
     })
     .unwrap();
 
+    let tk_id =
+      FpVar::new_witness(ark_relations::ns!(cs, "tk_id"), || Ok(self.tk_id.unwrap())).unwrap();
+
     // relation
 
-    // check h_k = HASH(ENA_writer || k_data )
-
-    let h_k_hash_input = [ENA_writer.clone(), k_data.k.clone()];
-    let result_h_k = MiMCGadget::<C::BaseField>::evaluate(&rc, &h_k_hash_input).unwrap();
-
-    println!("h_k: {:?}", result_h_k.is_eq(&h_k)?.value());
-
-    result_h_k.enforce_equal(&h_k)?;
-
-    // check cm
-
-    let binding = pk_cons.clone().pk.to_bits_le()?;
-    let pk_cons_point_x = Boolean::le_bits_to_fp_var(&binding[..binding.len() / 2])?;
-    let pk_cons_point_y = Boolean::le_bits_to_fp_var(&binding[binding.len() / 2..])?;
-
-    let cm_hash_input = [
-      ENA_writer.clone(),
-      r.clone(),
-      fee.clone(),
-      h_k.clone(),
-      pk_cons_point_x.clone(),
-    ];
-    let result_cm = MiMCGadget::<C::BaseField>::evaluate(&rc, &cm_hash_input).unwrap();
-
-    println!("cm: {:?}", result_cm.is_eq(&cm)?.value());
-
-    result_cm.enforce_equal(&cm)?;
-
-    // make o_Wallet
-
-    let o_wallet_hash_input = [r.clone(), fee.clone(), h_k.clone(), pk_cons_point_x.clone()];
-    let result_o_wallet = MiMCGadget::<C::BaseField>::evaluate(&rc, &o_wallet_hash_input).unwrap();
-
-    // check cm_Wallet
-
-    let cmWallet_hash_input = [
-      result_o_wallet.clone(),
-      tk_addr.clone(),
-      tk_id.clone(),
-      fee.clone(),
-      ENA_writer.clone(),
-    ];
-    let result_cmWallet = MiMCGadget::<C::BaseField>::evaluate(&rc, &cmWallet_hash_input).unwrap();
-
-    println!("cmWallet: {:?}", result_cmWallet.is_eq(&cmWallet)?.value());
-
-    result_cmWallet.enforce_equal(&cmWallet)?;
-    // check CT_k_data
+    /////////////////////////////////////////////////////////////////
+    // ctk = Enc(pkbuyer, k)
 
     let check_c_1 =
-      ElGamalEncGadget::<C, GG>::encrypt(&G.clone(), &CT_k_key.clone(), &CT_k_r, &pk_cons).unwrap();
+      ElGamalEncGadget::<C, GG>::encrypt(&G.clone(), &CT_k_key.clone(), &CT_k_r, &pkbuyer).unwrap();
 
     println!("c1: {:?}", c1.is_eq(&check_c_1)?.value());
     c1.enforce_equal(&check_c_1)?;
@@ -230,7 +250,86 @@ where
       c.enforce_equal(&CT_k[i])?;
       // println!("c: {:?}", c.is_eq(&CT_k[i])?.value());
     }
+    /////////////////////////////////////////////////////////////////
 
+    /////////////////////////////////////////////////////////////////
+    // check hk = HASH(skseller || k_data )
+
+    let hk_hash_input = [skseller.clone(), k_data.k.clone()];
+    let result_hk = MiMCGadget::<C::BaseField>::evaluate(&rc, &hk_hash_input).unwrap();
+
+    println!("hk: {:?}", result_hk.is_eq(&hk)?.value());
+
+    result_hk.enforce_equal(&hk)?;
+    /////////////////////////////////////////////////////////////////
+
+    /////////////////////////////////////////////////////////////////
+    // check cm
+    let binding = pkbuyer.clone().pk.to_bits_le()?;
+    let pkbuyer_point_x = Boolean::le_bits_to_fp_var(&binding[..binding.len() / 2])?;
+
+    let cm_hash_input = [
+      addrseller.clone(),
+      r.clone(),
+      fee.clone(),
+      hk.clone(),
+      pkbuyer_point_x.clone(),
+    ];
+    let result_cm = MiMCGadget::<C::BaseField>::evaluate(&rc, &cm_hash_input).unwrap();
+
+    println!("cm: {:?}", result_cm.is_eq(&cm)?.value());
+
+    result_cm.enforce_equal(&cm)?;
+    /////////////////////////////////////////////////////////////////
+
+    /////////////////////////////////////////////////////////////////
+    // check cmazeroth
+    let cmAzeroth_hash_input = [
+      oazeroth.clone(),
+      tk_addr.clone(),
+      tk_id.clone(),
+      fee.clone(),
+      addrseller.clone(),
+    ];
+    let result_cmAzeroth =
+      MiMCGadget::<C::BaseField>::evaluate(&rc, &cmAzeroth_hash_input).unwrap();
+
+    println!(
+      "cmazeroth: {:?}",
+      result_cmAzeroth.is_eq(&cmAzeroth)?.value()
+    );
+
+    result_cmAzeroth.enforce_equal(&cmAzeroth)?;
+    /////////////////////////////////////////////////////////////////
+
+    ///////////////////////////////////////////////////
+    // check merkletree
+    let leaf_g: Vec<_> = vec![cm.clone()];
+    cw.set_leaf_position(leaf_pos.clone());
+
+    let path_check = cw
+      .verify_membership(&rc.clone(), &rc.clone(), &rt, &leaf_g)
+      .unwrap();
+    path_check.enforce_equal(&Boolean::constant(true))?;
+    println!(
+      "path_check: {:?}",
+      path_check.is_eq(&Boolean::constant(true))?.value()
+    );
+
+    /////////////////////////////////////////////////////////////////
+
+    /////////////////////////////////////////////////////////////////
+    // check nf
+
+    let nf_input = [skseller.clone(), cm.clone()];
+    let result_nf = MiMCGadget::<C::BaseField>::evaluate(&rc, &nf_input).unwrap();
+
+    println!("nf: {:?}", result_nf.is_eq(&nf)?.value());
+
+    result_nf.enforce_equal(&nf)?;
+    /////////////////////////////////////////////////////////////////
+
+    println!("constranint num = {:?}", cs.num_constraints());
     Ok(())
   }
 }
@@ -250,6 +349,7 @@ where
 
   fn generate_circuit<R: ark_std::rand::Rng>(
     round_constants: Self::HashParam,
+    tree_height: u64,
     rng: &mut R,
   ) -> Result<Self::Output, Error> {
     use crate::gadget::hashes::CRHScheme;
@@ -270,60 +370,63 @@ where
 
     let sk: <<C as CurveGroup>::Affine as AffineRepr>::BaseField = Self::F::rand(rng);
 
-    // h_k
+    // hk
     let k_data: symmetric::SymmetricKey<<<C as CurveGroup>::Affine as AffineRepr>::BaseField> =
       symmetric::SymmetricKey { k: sk };
 
-    let ENA_writer: Self::F = Self::F::one();
+    let skseller = Self::F::rand(rng);
 
-    let h_k =
-      Self::H::evaluate(&rc.clone(), [ENA_writer.clone(), k_data.k.clone()].to_vec()).unwrap();
+    let hk = Self::H::evaluate(&rc.clone(), [skseller.clone(), k_data.k.clone()].to_vec()).unwrap();
 
     //cm
     let r: Self::F = Self::F::one();
     let fee: Self::F = Self::F::one();
-    let (pk_cons, _) = ElGamal::keygen(&elgamal_param, rng).unwrap();
-    let (pk_cons_point_x, pk_cons_point_y) = pk_cons.xy().unwrap();
-    let pk_cons_point_x = Self::F::from_bigint(pk_cons_point_x.into_bigint()).unwrap();
+    let (pkbuyer, _) = ElGamal::keygen(&elgamal_param, rng).unwrap();
+    let (pkseller, _) = ElGamal::keygen(&elgamal_param, rng).unwrap();
+    let (pkbuyer_point_x, pkbuyer_point_y) = pkbuyer.xy().unwrap();
+    let pkbuyer_point_x = Self::F::from_bigint(pkbuyer_point_x.into_bigint()).unwrap();
 
+    let (pkseller_point_x, pkseller_point_y) = pkseller.xy().unwrap();
+    let pkseller_point_x = Self::F::from_bigint(pkseller_point_x.into_bigint()).unwrap();
+
+    let addrseller: Self::F = Self::F::one();
     let cm: <<C as CurveGroup>::Affine as AffineRepr>::BaseField = Self::H::evaluate(
       &rc.clone(),
       [
-        ENA_writer.clone(),
+        addrseller.clone(),
         r.clone(),
         fee.clone(),
-        h_k.clone(),
-        pk_cons_point_x.clone(),
+        hk.clone(),
+        pkbuyer_point_x.clone(),
       ]
       .to_vec(),
     )
     .unwrap();
 
-    // make oWallet
+    // make oazeroth
 
-    let oWallet = Self::H::evaluate(
-      &rc.clone(),
-      [r.clone(), fee.clone(), h_k.clone(), pk_cons_point_x.clone()].to_vec(),
-    )
-    .unwrap();
+    let oazeroth: <<C as CurveGroup>::Affine as AffineRepr>::BaseField = Self::F::rand(rng);
 
     // make cm_wallet
-
     let tk_addr: Self::F = Self::F::one();
     let tk_id: Self::F = Self::F::one();
 
-    let cmWallet = Self::H::evaluate(
+    let cmAzeroth = Self::H::evaluate(
       &rc.clone(),
       [
-        oWallet.clone(),
+        oazeroth.clone(),
         tk_addr,
         tk_id,
         fee.clone(),
-        ENA_writer.clone(),
+        addrseller.clone(),
       ]
       .to_vec(),
     )
     .unwrap();
+
+    // make nf
+
+    let nf = Self::H::evaluate(&rc.clone(), [skseller.clone(), cm.clone()].to_vec()).unwrap();
 
     // maek CT_k
 
@@ -335,7 +438,7 @@ where
     let CT_r = C::ScalarField::rand(rng);
 
     let random: elgamal::Randomness<C> = elgamal::Randomness { 0: CT_r };
-    let (G_r, c1) = ElGamal::encrypt(&elgamal_param, &pk_cons, &CT_k_key, &random).unwrap();
+    let (G_r, c1) = ElGamal::encrypt(&elgamal_param, &pkbuyer, &CT_k_key, &random).unwrap();
 
     let Order = vec![k_data.k.clone()];
 
@@ -354,25 +457,50 @@ where
       CT_k.push(c.c);
     });
 
+    // Merkle tree
+    println!("generate mocking tree");
+    let leaf_crh_params = rc.clone();
+    let two_to_one_params = leaf_crh_params.clone();
+
+    let proof: merkle_tree::Path<FieldMTConfig<Self::F>> =
+      merkle_tree::mocking::get_mocking_merkle_tree(tree_height);
+    let leaf: Self::F = cm.clone();
+
+    println!("path len = {:?}", proof.auth_path.len());
+
+    let rt = proof
+      .get_test_root(&leaf_crh_params, &two_to_one_params, [leaf])
+      .unwrap();
+
+    let i: u32 = 3;
+    assert!(proof
+      .verify(&leaf_crh_params, &two_to_one_params, &rt, [leaf])
+      .unwrap());
+
     Ok(ZkMarketCircuit {
       //constant
       rc: rc.clone(),
       G: elgamal_param,
       // statement
-      cm: Some(cm),
-      cmWallet: Some(cmWallet),
+      rt: Some(rt),
+      nf: Some(nf),
+      cmAzeroth: Some(cmAzeroth),
+      hk: Some(hk),
+      addrseller: Some(addrseller),
       G_r: Some(G_r),
       c1: Some(c1),
       CT_k: Some(CT_k),
 
       //witness
-      h_k: Some(h_k),
+      cm: Some(cm),
+      leaf_pos: Some(i),
+      tree_proof: Some(proof),
+      skseller: Some(skseller),
       k_data: Some(k_data),
-      pk_cons: Some(pk_cons),
-      ENA_writer: Some(ENA_writer),
+      pkbuyer: Some(pkbuyer),
       r: Some(r),
       fee: Some(fee),
-
+      oazeroth: Some(oazeroth),
       CT_k_key: Some(CT_k_key),
       CT_k_x: Some(CT_k_x),
       CT_k_r: Some(random),

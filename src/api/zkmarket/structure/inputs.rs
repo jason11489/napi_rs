@@ -1,3 +1,4 @@
+use crate::gadget::merkle_tree;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
@@ -40,22 +41,36 @@ where
       G: constants.G.clone(),
 
       // inputs
-      cm: Some(self.statement.cm.clone()),
-      cmWallet: Some(self.statement.cmWallet.clone()),
+      rt: Some(self.statement.rt.clone()),
+      nf: Some(self.statement.nf.clone()),
+      cmAzeroth: Some(self.statement.cmAzeroth.clone()),
+      hk: Some(self.statement.hk.clone()),
+      addrseller: Some(self.statement.addrseller.clone()),
       G_r: Some(to_affine(self.statement.G_r.clone())),
       c1: Some(to_affine(self.statement.c1.clone())),
       CT_k: Some(self.statement.CT_k.clone()),
 
       // witnesses
-      h_k: Some(self.witnesses.h_k.clone()),
+      cm: Some(self.witnesses.cm.clone()),
+      leaf_pos: Some(self.witnesses.leaf_pos),
+      tree_proof: {
+        let proof = self.witnesses.tree_proof.clone();
+        let len = proof.len();
+        Some(merkle_tree::Path {
+          leaf_sibling_hash: proof[0],
+          // auth path direction is top-to-bottom!
+          auth_path: proof[1..len].to_vec().into_iter().rev().collect(),
+          leaf_index: self.witnesses.leaf_pos as usize,
+        })
+      },
+      skseller: Some(self.witnesses.skseller.clone()),
       k_data: Some(symmetric::SymmetricKey {
         k: self.witnesses.k_data.clone(),
       }),
-      pk_cons: Some(to_affine(self.witnesses.pk_cons.clone())),
-      ENA_writer: Some(self.witnesses.ENA_writer.clone()),
+      pkbuyer: Some(to_affine(self.witnesses.pkbuyer.clone())),
       r: Some(self.witnesses.r.clone()),
       fee: Some(self.witnesses.fee.clone()),
-
+      oazeroth: Some(self.witnesses.oazeroth.clone()),
       CT_k_key: Some(to_affine(self.witnesses.CT_k_key.clone())),
       CT_k_x: Some(symmetric::SymmetricKey {
         k: self.witnesses.CT_k_x.clone(),

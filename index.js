@@ -271,9 +271,10 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { testSnarkInput, test2, prove, init } = nativeBinding
+const { testSnarkInput, test2, test3, testForPk, prove } = nativeBinding
 
 module.exports.testSnarkInput = testSnarkInput
 module.exports.test2 = test2
+module.exports.test3 = test3
+module.exports.testForPk = testForPk
 module.exports.prove = prove
-module.exports.init = init

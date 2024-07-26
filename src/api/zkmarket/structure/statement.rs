@@ -16,8 +16,11 @@ use crate::Error;
 #[allow(non_snake_case)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ZkMarketCircuitStatement<C: CurveGroup> {
-  pub cm: C::BaseField,
-  pub cmWallet: C::BaseField,
+  pub rt: C::BaseField,
+  pub nf: C::BaseField,
+  pub cmAzeroth: C::BaseField,
+  pub hk: C::BaseField,
+  pub addrseller: C::BaseField,
   pub G_r: Vec<C::BaseField>, // affine
   pub c1: Vec<C::BaseField>,  // affine
   pub CT_k: Vec<C::BaseField>,
@@ -29,7 +32,13 @@ where
 {
   pub fn to_vec(&self) -> Result<Vec<C::BaseField>, Error> {
     let mut v = Vec::new();
-    v.append(&mut vec![self.cm.clone(), self.cmWallet.clone()]);
+    v.append(&mut vec![
+      self.rt.clone(),
+      self.nf.clone(),
+      self.cmAzeroth.clone(),
+      self.hk.clone(),
+      self.addrseller.clone(),
+    ]);
     v.append(&mut self.G_r.clone());
     v.append(&mut self.c1.clone());
     v.append(&mut self.CT_k.clone());
@@ -53,7 +62,13 @@ where
       ("CT_k", self.CT_k.clone()),
     ];
     // base field
-    let single_values_tuple = vec![("cm", self.cm.clone()), ("cmWallet", self.cmWallet.clone())];
+    let single_values_tuple = vec![
+      ("rt", self.rt.clone()),
+      ("nf", self.nf.clone()),
+      ("cmAzeroth", self.cmAzeroth.clone()),
+      ("hk", self.hk.clone()),
+      ("addrseller", self.addrseller.clone()),
+    ];
 
     let mut state = serializer.serialize_struct(
       "ZkMarketCircuitStatement",
@@ -100,8 +115,11 @@ where
     #[allow(non_camel_case_types)]
     #[derive(Eq, PartialEq, Hash)]
     enum Field {
-      cm,
-      cmWallet,
+      rt,
+      nf,
+      cmAzeroth,
+      hk,
+      addrseller,
       G_r,
       c1,
       CT_k,
@@ -118,7 +136,7 @@ where
           type Value = Field;
 
           fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-            formatter.write_str("`cm`,`cmWallet`, `G_r`, `c1`, `CT_k`")
+            formatter.write_str("`rt`,`nf`,`cmAzeroth`,`hk`,`addrseller`,`G_r`, `c1`, `CT_k`")
           }
 
           fn visit_str<E>(self, value: &str) -> Result<Field, E>
@@ -126,8 +144,11 @@ where
             E: de::Error,
           {
             match value {
-              "cm" => Ok(Field::cm),
-              "cmWallet" => Ok(Field::cmWallet),
+              "rt" => Ok(Field::rt),
+              "nf" => Ok(Field::nf),
+              "cmAzeroth" => Ok(Field::cmAzeroth),
+              "hk" => Ok(Field::hk),
+              "addrseller" => Ok(Field::addrseller),
               "G_r" => Ok(Field::G_r),
               "c1" => Ok(Field::c1),
               "CT_k" => Ok(Field::CT_k),
@@ -163,13 +184,16 @@ where
         let mut multi_values_map: HashMap<Field, (&str, Option<Vec<C::BaseField>>)> =
           HashMap::from([
             (Field::G_r, ("G_r", None)),
-            ((Field::c1, ("c1", None))),
-            ((Field::CT_k, ("CT_k", None))),
+            (Field::c1, ("c1", None)),
+            (Field::CT_k, ("CT_k", None)),
           ]);
 
         let mut single_values_map: HashMap<Field, (&str, Option<C::BaseField>)> = HashMap::from([
-          (Field::cm, ("cm", None)),
-          (Field::cmWallet, ("cmWallet", None)),
+          (Field::rt, ("rt", None)),
+          (Field::nf, ("nf", None)),
+          (Field::cmAzeroth, ("cmAzeroth", None)),
+          (Field::hk, ("hk", None)),
+          (Field::addrseller, ("addrseller", None)),
         ]);
 
         while let Some(key) = map.next_key()? {
@@ -189,7 +213,7 @@ where
               multi_values_map.insert(key, (*name, updated));
             }
             // handle single values
-            Field::cm | Field::cmWallet => {
+            Field::rt | Field::nf | Field::cmAzeroth | Field::hk | Field::addrseller => {
               let (name, value) = single_values_map.get(&key).unwrap();
               if value.is_some() {
                 return Err(de::Error::duplicate_field(name));
@@ -222,8 +246,11 @@ where
         }
 
         Ok(ZkMarketCircuitStatement {
-          cm: unwrap_map(&single_values_map, Field::cm).clone(),
-          cmWallet: unwrap_map(&single_values_map, Field::cmWallet).clone(),
+          rt: unwrap_map(&single_values_map, Field::rt).clone(),
+          nf: unwrap_map(&single_values_map, Field::nf).clone(),
+          cmAzeroth: unwrap_map(&single_values_map, Field::cmAzeroth).clone(),
+          hk: unwrap_map(&single_values_map, Field::hk).clone(),
+          addrseller: unwrap_map(&single_values_map, Field::addrseller).clone(),
           G_r: unwrap_map(&multi_values_map, Field::G_r).clone(),
           c1: unwrap_map(&multi_values_map, Field::c1).clone(),
           CT_k: unwrap_map(&multi_values_map, Field::CT_k).clone(),
@@ -231,7 +258,16 @@ where
       }
     }
 
-    const FIELDS: &'static [&'static str] = &["cm", "cmWallet", "G_r", "c1", "CT_k"];
+    const FIELDS: &'static [&'static str] = &[
+      "rt",
+      "nf",
+      "cmAzeroth",
+      "hk",
+      "addrseller",
+      "G_r",
+      "c1",
+      "CT_k",
+    ];
 
     deserializer.deserialize_struct(
       "ZkMarketCircuitStatement<C>",

@@ -2,6 +2,8 @@
 #![allow(dead_code)]
 pub type Error = Box<dyn ark_std::error::Error>;
 use crate::api::groth16::proof::ProofWrapper;
+use api::zkmarket::structure::inputs;
+use ark_bn254::Bn254;
 use ark_crypto_primitives::snark::SNARK;
 use ark_ec::twisted_edwards;
 use ark_ec::AffineRepr;
@@ -12,6 +14,7 @@ use ark_std::io::Cursor;
 use ark_std::rand::SeedableRng;
 use serde_json::Number;
 use std::fs::File;
+use std::str::FromStr;
 use std::string;
 
 use rand::rngs::OsRng;
@@ -38,20 +41,26 @@ use napi::bindgen_prelude::Buffer;
 
 #[napi(object)]
 pub struct snark_input {
-  pub cm: String,
-  pub cmWallet: String,
+  pub rt: String,
+  pub nf: String,
+  pub cmAzeroth: String,
+  pub hk: String,
+  pub addrseller: String,
   pub G_r_x: String,
   pub G_r_y: String,
   pub c1_x: String,
   pub c1_y: String,
   pub CT_k: String,
-  pub h_k: String,
+  pub cm: String,
+  pub leaf_pos: String,
+  pub tree_proof: Vec<String>,
+  pub skseller: String,
   pub k_data: String,
-  pub pk_cons_x: String,
-  pub pk_cons_y: String,
-  pub ENA_writer: String,
+  pub pkbuyer_x: String,
+  pub pkbuyer_y: String,
   pub r: String,
   pub fee: String,
+  pub oazeroth: String,
   pub CT_k_key_x: String,
   pub CT_k_key_y: String,
   pub CT_k_x: String,
@@ -99,14 +108,41 @@ pub fn test_snark_input(input: snark_input) {
   type H = mimc7::MiMC<F>;
 
   use ark_relations::r1cs::ConstraintSynthesizer;
-  let tmp: F = Fp::from_str(&input.ENA_writer).unwrap();
+  let tmp: F = Fp::from_str(&input.rt).unwrap();
 
   println!("{:?}", tmp);
 }
 
 #[napi]
 pub fn test2() -> u32 {
-  876543
+  222
+}
+#[napi]
+pub fn test3() -> u32 {
+  222
+}
+
+use once_cell::sync::Lazy;
+
+static test_pk: Lazy<ProvingKey<Bn254>> = Lazy::new(|| {
+  let mut f = File::open("../CRS/crs.pk").expect("file not found");
+  let mut buffer = Vec::new();
+  f.read_to_end(&mut buffer).expect("fail to read pk");
+  ProvingKey::<Bn254>::deserialize_uncompressed(&mut buffer.as_slice()).unwrap()
+});
+
+#[napi]
+pub fn test_for_pk() {
+  println!("\nflag\n");
+
+  println!("pk = {:?}", *test_pk);
+}
+
+#[test]
+pub fn testu32() {
+  let mystring = "4294967319".to_string();
+  let check: u32 = u32::from_str("32").unwrap();
+  println!("{:?}", check);
 }
 
 #[napi]
@@ -156,8 +192,11 @@ pub fn prove(input: snark_input) -> String {
   type H = mimc7::MiMC<F>;
   let input: ZkMarketCircuitInputs<_> = ZkMarketCircuitInputs {
     statement: ZkMarketCircuitStatement {
-      cm: Fp::from_str(&input.cm).unwrap(),
-      cmWallet: Fp::from_str(&input.cmWallet).unwrap(),
+      rt: Fp::from_str(&input.rt).unwrap(),
+      nf: Fp::from_str(&input.nf).unwrap(),
+      cmAzeroth: Fp::from_str(&input.cmAzeroth).unwrap(),
+      hk: Fp::from_str(&input.hk).unwrap(),
+      addrseller: Fp::from_str(&input.addrseller).unwrap(),
       G_r: vec![
         Fp::from_str(&input.G_r_x).unwrap(),
         Fp::from_str(&input.G_r_y).unwrap(),
@@ -169,15 +208,24 @@ pub fn prove(input: snark_input) -> String {
       CT_k: vec![Fp::from_str(&input.CT_k).unwrap()],
     },
     witnesses: ZkMarketCircuitWitnesses {
-      h_k: Fp::from_str(&input.h_k).unwrap(),
+      cm: Fp::from_str(&input.cm).unwrap(),
+      leaf_pos: u32::from_str(&input.leaf_pos).unwrap(),
+      tree_proof: {
+        let mut tree_proof_input = Vec::new();
+        for i in 0..input.tree_proof.len() {
+          tree_proof_input.push(Fp::from_str(&input.tree_proof[i]).unwrap());
+        }
+        tree_proof_input
+      },
+      skseller: Fp::from_str(&input.skseller).unwrap(),
       k_data: Fp::from_str(&input.k_data).unwrap(),
-      pk_cons: vec![
-        Fp::from_str(&input.pk_cons_x).unwrap(),
-        Fp::from_str(&input.pk_cons_y).unwrap(),
+      pkbuyer: vec![
+        Fp::from_str(&input.pkbuyer_x).unwrap(),
+        Fp::from_str(&input.pkbuyer_y).unwrap(),
       ],
-      ENA_writer: Fp::from_str(&input.ENA_writer).unwrap(),
       r: Fp::from_str(&input.r).unwrap(),
       fee: Fp::from_str(&input.fee).unwrap(),
+      oazeroth: Fp::from_str(&input.oazeroth).unwrap(),
       CT_k_key: vec![
         Fp::from_str(&input.CT_k_key_x).unwrap(),
         Fp::from_str(&input.CT_k_key_y).unwrap(),
@@ -197,6 +245,8 @@ pub fn prove(input: snark_input) -> String {
 
   let proof = Groth16::<ark_bn254::Bn254>::prove(&pk, c.clone(), &mut rng).unwrap();
 
+  assert!(Groth16::<Bn254>::verify_with_processed_vk(&pvk, &input.statement, &proof).unwrap());
+
   let _proof = ProofWrapper::new(&proof);
   let serialized_proof = serde_json::to_string(&_proof).unwrap();
 
@@ -207,7 +257,7 @@ pub fn prove(input: snark_input) -> String {
   // input
 }
 
-#[napi]
+#[test]
 fn init() {
   use ark_bn254::Bn254;
   use ark_crypto_primitives::snark::CircuitSpecificSetupSNARK;
@@ -228,7 +278,7 @@ fn init() {
   };
 
   let circuit =
-    <ZkMarketCircuit<C, GG> as MockingCircuit<C, GG>>::generate_circuit(rc.clone(), &mut rng)
+    <ZkMarketCircuit<C, GG> as MockingCircuit<C, GG>>::generate_circuit(rc.clone(), 32, &mut rng)
       .unwrap();
 
   let (pk, vk) = Groth16::<Bn254>::setup(circuit.clone(), &mut rng).unwrap();
@@ -250,6 +300,7 @@ fn init() {
   f.read_to_end(&mut buffer).expect("fail to read vk");
   let vk_ = VerifyingKey::<Bn254>::deserialize_uncompressed(&mut buffer.as_slice()).unwrap();
   let tmp = VerifyingKeyWrapper::new(&vk_);
+  let dddd = vk_.beta_g2.x().unwrap().c0;
   println!(
     "[TEST] Verify Key as Contract Format: {:?}",
     tmp.vk_to_contract_args()

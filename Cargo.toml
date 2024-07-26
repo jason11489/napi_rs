@@ -40,6 +40,8 @@ tracing-subscriber = "0.2.0"
 napi        = "2"
 napi-derive = "2"
 
+once_cell = "1.19.0"
+
 [dev-dependencies]
 ark-bls12-377 = "0.4.0"
 ark-bls12-381 = "0.4.0"
@@ -63,16 +65,25 @@ napi-build = "1"
 num-bigint = "0.4.3"
 
 
+[features]
+default = ["ark-crypto-primitives/r1cs", "parallel"]
+
+parallel = [
+    "ark-ff/parallel",
+    "ark-ec/parallel",
+    "ark-std/parallel",
+    "ark-poly/parallel",
+    "ark-groth16/parallel",
+]
+trace = ["ark-std/print-trace"]
+zkmarketserver = []
+
+
 [build-dependencies]
 napi-build = "2"
 
 [profile.release]
 lto = true
-
-
-[features]
-
-zkmarketserver = []
 
 # .cargo/config.toml
 [build]
